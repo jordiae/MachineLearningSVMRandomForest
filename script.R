@@ -80,8 +80,8 @@ for (nt in ntrees)
 { 
   print(nt)
   
-  model.rf <- randomForest(subscribed ~ ., data = learn.data, ntree=nt, proximity=FALSE, 
-                           sampsize=c(yes=3000, no=3000), strata=learn.data$subscribed)
+  model.rf <- randomForest(Salary.3 ~ ., data = learn.data, ntree=nt, proximity=FALSE)
+                           #sampsize=c(yes=30, no=30), strata=learn.data$Salary.3)
   
   # get the OOB
   rf.results[ii,"OOB"] <- model.rf$err.rate[nt,1]
@@ -94,15 +94,41 @@ rf.results
 # choose best value of 'ntrees'
 
 lowest.OOB.error <- as.integer(which.min(rf.results[,"OOB"]))
-(ntrees.best <- rf.results[lowest.OOB.error,"ntrees"])
+(ntrees.best <- rf.results[lowest.OOB.error,"ntrees"]) # 25
+# OOB =  0.5204082 -> 1-OOB = 0.4795918
 
 ### 3
 library(e1071)
 
-bestSVM <- tune(svm, Salary.3~., data = learn.data, 
-     ranges = list(gamma = 2^(-1:1), cost = 2^(2:4), kernel=c("linear","polynomial","radial"),degree=c(2,3)),
-     tunecontrol = tune.control(sampling = "cross",nrepeat=10), coef0=1, scale = TRUE,type="C-classification"
+bestSVM <- tune(svm, Salary.3~., data = learn.data,
+     ranges = list(gamma = 10^seq(-5,2), cost =10^seq(-2,3), kernel=c("linear","polynomial","radial"),degree=c(2,3)), #gamma = 2^(-1:1), cost = 2^(2:4), class.weights = "inverse"
+     tunecontrol = tune.control(sampling = "cross",nrepeat=10), coef0=1, scale = TRUE,type="C-classification"#,class.weights=c('<35k' = 40, '35k' = 20, '>35k'  =40)
 )
+
+#Parameter tuning of ‘svm’:
+  
+#  - sampling method: 10-fold cross validation 
+
+#- best parameters:
+#  gamma cost     kernel degree
+#0.1    1 polynomial      2
+
+#- best performance: 0.4733333 
+
+#Call:
+#svm(formula = Salary.3 ~ ., data = learn.data, type = "C-classification", coef0 = 1, kernel = bestSVM$best.parameters$kernel, gamma = bestSVM$best.parameters$gamma, 
+#    cost = bestSVM$best.parameters$cost, degree = bestSVM$best.parameters$degree, scale = TRUE)
+
+
+#Parameters:
+#  SVM-Type:  C-classification 
+#SVM-Kernel:  polynomial 
+#cost:  1 
+#degree:  2 
+#gamma:  0.1 
+#coef.0:  1 
+
+#Number of Support Vectors:  90
 
 (modelSVM <- svm(Salary.3~., data = learn.data, type="C-classification", scale = TRUE,coef0 = 1, kernel=bestSVM$best.parameters$kernel,
                  gamma=bestSVM$best.parameters$gamma,cost=bestSVM$best.parameters$cost,degree=bestSVM$best.parameters$degree))
@@ -116,3 +142,13 @@ bestSVM <- tune(svm, Salary.3~., data = learn.data,
 # Per decidir quin és el millor *NOOO* utilitzarem test. Agafarem el que ha donat millors resultats en la validació, que és _____
 # Ara sí, utilitzarem el millor model trobat en el test. Això servirà per donar una estimació realista del seu rendiment
 
+# SVM té menys error
+library(MASS)
+library(caret)
+p <- factor(predict (modelSVM, newdata=test.data, type="raw"),levels=Enquesta[,11])
+c <- confusionMatrix(test.data$Salary.3,p)
+
+overall <- c$overall
+overall.accuracy <- overall['Accuracy']  #Accuracy 0.3265306 
+
+# Cal aplicar tècniques per imbalanced (optimitzar per F1, stratitified, class weights...)
