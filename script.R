@@ -31,18 +31,32 @@ Enquesta <- Enquesta[vars]
 # Resampling
 
 # precalculate the TR/TE partition and the cross-validation partitions on the TR part
-
 N <- nrow(Enquesta)
-all.indexes <- 1:N
+library(stratification)
+indexs <- Enquesta["Salary.3"]
+indexs$num <- seq.int(nrow(Enquesta))
+prova <- stratified(indexs,c("Salary.3"),1)
+xx = c(round((2*N/3)*(sum(indexs$Salary.3 == "<35k")/N)),round((2*N/3)*(sum(indexs$Salary.3 == "35k")/N)),round((2*N/3)*sum(indexs$Salary.3 == ">35k")/N))
+names( xx ) = c( "<35k" , "35k",">35k" )
+prova <- stratified(indexs,c("Salary.3"),bothSets = TRUE,size=xx)
 
-learn.indexes <- sample(1:N, round(2*N/3))
-test.indexes <- all.indexes[-learn.indexes]
-
+learn.indexes <- prova$SAMP1$num #sample(1:N, round(2*N/3))
+test.indexes <- prova$SAMP2$num #all.indexes[-learn.indexes]
 learn.data <- Enquesta[learn.indexes,]
 test.data <- Enquesta[test.indexes,]
 
-nlearn <- length(learn.indexes)
-ntest <- N - nlearn
+#N <- nrow(Enquesta)
+
+#all.indexes <- 1:N
+
+#learn.indexes <- sample(1:N, round(2*N/3))
+#test.indexes <- all.indexes[-learn.indexes]
+
+#learn.data <- Enquesta[learn.indexes,]
+#test.data <- Enquesta[test.indexes,]
+
+#nlearn <- length(learn.indexes)
+#ntest <- N - nlearn
 
 
 
@@ -97,6 +111,8 @@ lowest.OOB.error <- as.integer(which.min(rf.results[,"OOB"]))
 (ntrees.best <- rf.results[lowest.OOB.error,"ntrees"]) # 25
 # OOB =  0.5204082 -> 1-OOB = 0.4795918
 
+bestRF <- randomForest(Salary.3 ~ ., data = learn.data, ntree=ntrees.best, proximity=FALSE)
+
 ### 3
 library(e1071)
 
@@ -145,10 +161,43 @@ bestSVM <- tune(svm, Salary.3~., data = learn.data,
 # SVM té menys error
 library(MASS)
 library(caret)
-p <- factor(predict (modelSVM, newdata=test.data, type="raw"),levels=Enquesta[,11])
+#p <- factor(predict (modelSVM, newdata=test.data, type="raw"),levels=Enquesta[,11])
+p <- factor(predict (bestRF, newdata=test.data, type="class"),levels=Enquesta[,11])
 c <- confusionMatrix(test.data$Salary.3,p)
 
 overall <- c$overall
 overall.accuracy <- overall['Accuracy']  #Accuracy 0.3265306 
 
 # Cal aplicar tècniques per imbalanced (optimitzar per F1, stratitified, class weights...)
+
+# resultats amb el canvi de resampling (stratified que he fet):
+#Parameter tuning of ‘svm’:
+  
+#  - sampling method: 10-fold cross validation 
+
+#- best parameters:
+#  gamma cost     kernel degree
+#0.001  100 polynomial      2
+
+#- best performance: 0.44 
+
+
+
+
+#Call:
+#  svm(formula = Salary.3 ~ ., data = learn.data, type = "C-classification", coef0 = 1, kernel = bestSVM$best.parameters$kernel, gamma = bestSVM$best.parameters$gamma, 
+#      cost = bestSVM$best.parameters$cost, degree = bestSVM$best.parameters$degree, scale = TRUE)
+
+
+#Parameters:
+#  SVM-Type:  C-classification 
+#SVM-Kernel:  polynomial 
+#cost:  100 
+#degree:  2 
+#gamma:  0.001 
+#coef.0:  1 
+
+#Number of Support Vectors:  91
+
+
+# test(SVM)  accuracy 0.53
