@@ -1,0 +1,31 @@
+> bestSVM
+
+Parameter tuning of ‘svm’:
+
+- sampling method: 10-fold cross validation 
+
+- best parameters:
+ gamma cost kernel degree
+ 1e-05    1 linear      2
+
+- best performance: 0.4611111
+
+
+
+
+
+
++                  gamma=bestSVM$best.parameters$gamma,cost=bestSVM$best.parameters$cost,degree=bestSVM$best.parameters$degree))
+
+Call:
+svm(formula = Salary.3 ~ ., data = learn.data, type = "C-classification", coef0 = 1, kernel = bestSVM$best.parameters$kernel, gamma = bestSVM$best.parameters$gamma, 
+    cost = bestSVM$best.parameters$cost, degree = bestSVM$best.parameters$degree, scale = FALSE)
+
+
+Parameters:
+   SVM-Type:  C-classification 
+ SVM-Kernel:  linear 
+       cost:  1 
+      gamma:  1e-05 
+
+Number of Support Vectors:  87
