@@ -1,0 +1,337 @@
+
+```{r}
+set.seed(1111)
+
+### 1
+
+# Llegim el dataset com diu l'enunciat
+Enquesta <- read.csv("Enquesta.csv", header=TRUE,sep=",",dec=",")
+summary(Enquesta)
+
+```
+
+```{r}
+# Problema: s'ha inclòs el número de fila com a variable (Num), l'eliminem
+Enquesta$Num <- NULL
+
+# Recodifiquem la variable Salary, com diu l'enunciat
+recodificarSalary <- function(x) {
+  if (x == "35k")
+    return("35k")
+  if (x == "<18k" || x == "25k")
+    return("<35k")
+  return(">35k")
+}
+
+Enquesta$Salary.3 <- as.factor(mapply(recodificarSalary,Enquesta$Salary))
+# Comprovem que s'ha fet bé:
+sum(Enquesta$Salary.3 == "<35k") # 39
+sum(Enquesta$Salary.3 == "35k") # 71
+sum(Enquesta$Salary.3 == ">35k") # 37
+
+# L'enunciat diu que utilitzem només les variables indicades, que entenem que són aquestes
+vars <- c("Image","Exp.gene","Exp.spec","Qual.gen","Qual.spec","Value","Satisfaction","Startwork","Accgrade","Grade", "Salary.3")
+Enquesta <- Enquesta[vars]
+
+```
+
+```{r}
+# Resampling
+
+# precalculate the TR/TE partition and the cross-validation partitions on the TR part
+#N <- nrow(Enquesta)
+#library(stratification)
+#indexs <- Enquesta["Salary.3"]
+#indexs$num <- seq.int(nrow(Enquesta))
+#prova <- stratified(indexs,c("Salary.3"),1)
+#xx = c(round((2*N/3)*(sum(indexs$Salary.3 == "<35k")/N)),round((2*N/3)*(sum(indexs$Salary.3 == "35k")/N)),round((2*N/3)*sum(indexs$Salary.3 == ">35k")/N))
+#names( xx ) = c( "<35k" , "35k",">35k" )
+#prova <- stratified(indexs,c("Salary.3"),bothSets = TRUE,size=xx)
+
+#learn.indexes <- prova$SAMP1$num #sample(1:N, round(2*N/3))
+#test.indexes <- prova$SAMP2$num #all.indexes[-learn.indexes]
+#learn.data <- Enquesta[learn.indexes,]
+#test.data <- Enquesta[test.indexes,]
+
+learn.indexes <- sample(1:nrow(Enquesta), 2*nrow(Enquesta)/3)
+test.indexes <- index.Enquesta[-learn.indexes]
+learn.data <- Enquesta[learn.indexes,]
+test.data <- Enquesta[test.indexes,]
+
+sum(learn.data$Salary.3 == "<35k") # 39
+sum(learn.data$Salary.3 == "35k") # 71
+sum(learn.data$Salary.3 == ">35k") # 37
+
+library(caret)
+
+```
+
+```{r}
+
+N <- floor(2*nrow(Enquesta)/10)
+
+Enquesta1 <- Enquesta[Enquesta$Salary.3=="<35k",]
+Enquesta2 <- Enquesta[Enquesta$Salary.3=="35k",] 
+Enquesta3 <- Enquesta[Enquesta$Salary.3==">35k",]
+
+index.Enquesta1 <- 1:nrow(Enquesta1)
+index.Enquesta2 <- 1:nrow(Enquesta2)
+index.Enquesta3 <- 1:nrow(Enquesta3)
+
+learn.indexes.enquesta1 <- sample(1:nrow(Enquesta1), N)
+test.indexes.enquesta1 <- index.Enquesta1[-learn.indexes.enquesta1]
+learn.data.enquesta1 <- Enquesta1[learn.indexes.enquesta1,]
+test.data.enquesta1 <- Enquesta1[test.indexes.enquesta1,]
+
+learn.indexes.enquesta2 <- sample(1:nrow(Enquesta2), N)
+test.indexes.enquesta2 <- index.Enquesta2[-learn.indexes.enquesta2]
+learn.data.enquesta2 <- Enquesta2[learn.indexes.enquesta2,]
+test.data.enquesta2 <- Enquesta2[test.indexes.enquesta2,]
+
+learn.indexes.enquesta3 <- sample(1:nrow(Enquesta3), N)
+test.indexes.enquesta3 <- index.Enquesta3[-learn.indexes.enquesta3]
+learn.data.enquesta3 <- Enquesta3[learn.indexes.enquesta3,]
+test.data.enquesta3 <- Enquesta3[test.indexes.enquesta3,]
+
+
+learn.data <- rbind(learn.data.enquesta1,learn.data.enquesta2,learn.data.enquesta3)
+test.data <- rbind(test.data.enquesta1,test.data.enquesta2,test.data.enquesta3)
+
+sum(test.data$Salary.3 == "<35k") # 39
+sum(test.data$Salary.3 == "35k") # 71
+sum(test.data$Salary.3 == ">35k") # 37
+
+```
+
+```{r}
+(ntrees <- round(10^seq(1,3,by=0.2)))
+mtrys <- (1:nrow(Enquesta)-1)
+
+# prepare the structure to store the partial results
+
+rf.results <- matrix (rep(0,3*(length(ntrees))*(length(mtrys))),nrow=(length(ntrees)*length(mtrys)))
+colnames (rf.results) <- c("ntrees", "mtrys", "OOB")
+rf.results[,"ntrees"] <- ntrees
+rf.results[,"mtrys"] <- mtrys
+rf.results[,"OOB"] <- 0
+
+ii <- 1
+
+for (nt in ntrees)
+{ 
+  for (mtr in mtrys) 
+  {
+    model.rf <- randomForest(Salary.3 ~ ., data = learn.data, ntree=nt, mtry = mtr, proximity=FALSE, 
+                            strata=learn.data$Salary.3)
+    
+    # get the OOB
+    rf.results[ii,"OOB"] <- model.rf$err.rate[nt,1]
+  
+    ii <- ii+1
+  }
+}
+
+
+# choose best value of 'ntrees'
+
+(lowest.OOB.error <- as.integer(which.min(rf.results[,"OOB"])))
+(ntrees.best <- rf.results[lowest.OOB.error,"ntrees"])
+(mtry.best <- rf.results[lowest.OOB.error,"mtrys"])
+
+model.rf <- randomForest(Salary.3 ~ ., data = learn.data, ntree=ntrees.best, mtry=mtry.best, proximity=FALSE, 
+                          strata=learn.data$Salary.3)
+prediction <- predict(model.rf,newdata = test.data)
+
+(ct <- table(Truth=test.data$Salary.3, Pred=prediction))
+
+sum(diag(ct))/sum(ct)*100
+
+```
+```{r}
+library(DMwR)
+trc <- trainControl (method="repeatedcv", number=10, repeats=10)
+ntrees <- round(10^seq(1,3,by=0.2))
+mtrys <- (1:nrow(Enquesta)-1)
+
+model_rf <- train(Salary.3 ~ .,
+                         data = learn.data,
+                         method = "rf",
+                         tunegrid = expand.grid(.ntree=ntrees,.mtry=mtrys),
+                         metric = 'Accuracy',
+                         trControl = trc)
+
+prediction <- predict(model_rf,newdata = test.data)
+
+(ct <- table(Truth=test.data$Salary.3, Pred=prediction))
+
+sum(diag(ct))/sum(ct)*100
+```
+
+```{r}
+### 2
+```
+
+```{r}
+library(randomForest)
+model.rf1 <- randomForest(Salary.3 ~ ., data = learn.data, ntree=100, proximity=FALSE)
+
+
+model.rf1$err.rate
+
+prediction <- predict(model.rf1,newdata = test.data)
+
+(ct <- table(Truth=test.data$Salary.3, Pred=prediction))
+
+sum(diag(ct))/sum(ct)*100
+```
+
+```{r}
+
+
+#library(caret)
+
+## specify 10x10 CV
+trc <- trainControl (method="repeatedcv", number=10, repeats=10)
+ntrees <- round(10^seq(1,3,by=0.2))
+mtrys <- (1:nrow(Enquesta)-1)
+
+## WARNING: this takes some minutes
+model.10x10CV <- train (Salary.3 ~., data = learn.data, method='rf', trace = FALSE, metric="Accuracy", tuneGrid = expand.grid(.ntree=ntrees, trControl=trc)
+#,.mtry=mtrys)
+
+
+## Now we can try to optimize the number of trees, guided by OOB:
+
+(ntrees <- round(10^seq(1,3,by=0.2)))
+
+# prepare the structure to store the partial results
+
+rf.results <- matrix (rep(0,2*length(ntrees)),nrow=length(ntrees))
+colnames (rf.results) <- c("ntrees", "OOB")
+rf.results[,"ntrees"] <- ntrees
+rf.results[,"OOB"] <- 0
+
+ii <- 1
+
+# hauríem de fer el mateix amb el paràmetre mtry, de 1 a nrow(Enquesta)-1. Segurament hauria de ser un for anidat
+# Sense for anidat, ja triga moltíssim
+for (nt in ntrees)
+{ 
+  print(nt)
+  
+  model.rf <- randomForest(Salary.3 ~ ., data = learn.data, ntree=nt, proximity=FALSE)
+                           #sampsize=c(yes=30, no=30), strata=learn.data$Salary.3)
+  
+  # get the OOB
+  rf.results[ii,"OOB"] <- model.rf$err.rate[nt,1]
+  
+  ii <- ii+1
+}
+
+rf.results
+
+# choose best value of 'ntrees'
+
+lowest.OOB.error <- as.integer(which.min(rf.results[,"OOB"]))
+(ntrees.best <- rf.results[lowest.OOB.error,"ntrees"]) # 25
+# OOB =  0.5204082 -> 1-OOB = 0.4795918
+
+bestRF <- randomForest(Salary.3 ~ ., data = learn.data, ntree=ntrees.best, proximity=FALSE)
+```
+
+```{r}
+### 3
+library(e1071)
+
+bestSVM <- tune(svm, Salary.3~., data = learn.data,
+     ranges = list(gamma = 10^seq(-5,2), cost =10^seq(-2,3), kernel=c("linear","polynomial","radial"),degree=c(2,3)), #gamma = 2^(-1:1), cost = 2^(2:4), class.weights = "inverse"
+     tunecontrol = tune.control(sampling = "cross",nrepeat=10), coef0=1, scale = TRUE,type="C-classification"#,class.weights=c('<35k' = 40, '35k' = 20, '>35k'  =40)
+)
+
+#Parameter tuning of 'svm':
+  
+#  - sampling method: 10-fold cross validation 
+
+#- best parameters:
+#  gamma cost     kernel degree
+#0.1    1 polynomial      2
+
+#- best performance: 0.4733333 
+
+#Call:
+#svm(formula = Salary.3 ~ ., data = learn.data, type = "C-classification", coef0 = 1, kernel = bestSVM$best.parameters$kernel, gamma = bestSVM$best.parameters$gamma, 
+#    cost = bestSVM$best.parameters$cost, degree = bestSVM$best.parameters$degree, scale = TRUE)
+
+
+#Parameters:
+#  SVM-Type:  C-classification 
+#SVM-Kernel:  polynomial 
+#cost:  1 
+#degree:  2 
+#gamma:  0.1 
+#coef.0:  1 
+
+#Number of Support Vectors:  90
+
+(modelSVM <- svm(Salary.3~., data = learn.data, type="C-classification", scale = TRUE,coef0 = 1, kernel=bestSVM$best.parameters$kernel,
+                 gamma=bestSVM$best.parameters$gamma,cost=bestSVM$best.parameters$cost,degree=bestSVM$best.parameters$degree))
+
+
+
+
+
+## Ara decidirem quin és el millor model d'entre el millor model de random forest i el millor d'SVM, que han tingut accés a exactament les mateixes dades de learn
+# I a més cap dels dos ha utilitzat test.
+# Per decidir quin és el millor *NOOO* utilitzarem test. Agafarem el que ha donat millors resultats en la validació, que és _____
+# Ara sí, utilitzarem el millor model trobat en el test. Això servirà per donar una estimació realista del seu rendiment
+
+# SVM té menys error
+library(MASS)
+library(caret)
+#p <- factor(predict (modelSVM, newdata=test.data, type="raw"),levels=Enquesta[,11])
+p <- factor(predict (bestRF, newdata=test.data, type="class"),levels=Enquesta[,11])
+c <- confusionMatrix(test.data$Salary.3,p)
+
+overall <- c$overall
+overall.accuracy <- overall['Accuracy']  #Accuracy 0.3265306 
+
+# Cal aplicar tècniques per imbalanced (optimitzar per F1, stratitified, class weights...)
+
+# resultats amb el canvi de resampling (stratified que he fet):
+#Parameter tuning of 'svm':
+  
+#  - sampling method: 10-fold cross validation 
+
+#- best parameters:
+#  gamma cost     kernel degree
+#0.001  100 polynomial      2
+
+#- best performance: 0.44 
+
+
+
+
+#Call:
+#  svm(formula = Salary.3 ~ ., data = learn.data, type = "C-classification", coef0 = 1, kernel = bestSVM$best.parameters$kernel, gamma = bestSVM$best.parameters$gamma, 
+#      cost = bestSVM$best.parameters$cost, degree = bestSVM$best.parameters$degree, scale = TRUE)
+
+
+#Parameters:
+#  SVM-Type:  C-classification 
+#SVM-Kernel:  polynomial 
+#cost:  100 
+#degree:  2 
+#gamma:  0.001 
+#coef.0:  1 
+
+#Number of Support Vectors:  91
+
+
+# test(SVM)  accuracy 0.53
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
